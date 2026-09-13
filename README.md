@@ -47,10 +47,18 @@ A URL shortener built with FastAPI, SQLModel (Postgres), and Redis.
    ```bash
    curl -X POST http://127.0.0.1:8000/urls \
      -H "Content-Type: application/json" \
-     -d '{"long_url": "https://example.com/some/very/long/path"}'
+     -d '{"original_url": "https://example.com/some/very/long/path", "user_id": "user-1"}'
 
    curl -i http://127.0.0.1:8000/health
    ```
+
+## Short codes
+
+Codes are random base62 strings, `SHORT_CODE_LENGTH` characters long (default 7). Every code an
+instance generates starts with one of its `SHORT_CODE_PREFIXES` (comma-separated single characters,
+default: any). Give each instance a disjoint set — say `a,b,c` and `A,B,C` — and instances can never
+generate the same code. A new code is checked against both active and expired codes, so an expired
+link never starts pointing somewhere else.
 
 ## Running tests
 
@@ -75,13 +83,15 @@ uv run pytest
 ```
 src/tshortner/
 ├── api/          # FastAPI routers, endpoints, and dependencies
-├── core/         # Settings/config
-├── db/           # Postgres and Redis client setup
+├── core/         # Settings
+├── db/           # Postgres and Redis clients
+├── middleware/   # Publishes short-link usage to Redis pub/sub
 ├── models/       # SQLModel tables
-├── schemas/      # Pydantic request/response models
-├── repositories/ # Database access layer
-├── services/     # Business logic (shortening, caching)
-└── utils/        # Helpers (base62 encoding)
+├── repositories/ # Database queries
+├── schemas/      # Request/response models
+├── services/     # Shortening and cached lookups
+├── utils/        # Short code generation
+└── worker/       # Background threads: access-log flushing and link expiry
 
 alembic/          # Database migrations
 tests/

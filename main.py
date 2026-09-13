@@ -1,3 +1,1 @@
-from tshortner.app import app
-
-__all__ = ["app"]
+from tshortner.app import app  # noqa: F401

@@ -1,7 +1,7 @@
 [project]
 name = "tshortner"
 version = "0.1.0"
-description = "Add your description here"
+description = "A URL shortener built with FastAPI, SQLModel, and Redis."
 readme = "README.md"
 authors = [
     { name = "Ali ShahAbbasi", email = "shahabbasi.ali.98@gmail.com" }
@@ -16,9 +16,6 @@ dependencies = [
     "sqlalchemy[asyncio]>=2.0",
     "sqlmodel>=0.0.42",
 ]
-
-[project.scripts]
-tshortner = "tshortner:main"
 
 [build-system]
 requires = ["uv_build>=0.12.13,<0.13.0"]

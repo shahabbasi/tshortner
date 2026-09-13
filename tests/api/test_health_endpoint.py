@@ -1,14 +1,13 @@
-import pytest
-from httpx import ASGITransport, AsyncClient
+from fastapi import FastAPI
+from httpx import AsyncClient
 
 from tshortner.api.deps import get_db_session, get_redis
-from tshortner.app import create_app
 
-pytestmark = pytest.mark.asyncio
+OK = {"status": "ok", "error": None}
 
 
 class _BrokenSession:
-    async def exec(self, *args, **kwargs):
+    async def exec(self, *args: object) -> None:
         raise RuntimeError("db down")
 
 
@@ -17,24 +16,22 @@ class _BrokenRedis:
         raise ConnectionError("redis down")
 
 
-async def test_health_check_reports_error_when_dependencies_fail() -> None:
-    app = create_app()
+async def test_health_check_ok(client: AsyncClient) -> None:
+    response = await client.get("/health")
 
-    async def _broken_db_session():
-        yield _BrokenSession()
+    assert response.status_code == 200
+    assert response.json() == {"status": "ok", "postgres": OK, "redis": OK}
 
-    async def _broken_redis():
-        yield _BrokenRedis()
 
-    app.dependency_overrides[get_db_session] = _broken_db_session
-    app.dependency_overrides[get_redis] = _broken_redis
+async def test_health_check_reports_failing_dependencies(app: FastAPI, client: AsyncClient) -> None:
+    app.dependency_overrides[get_db_session] = _BrokenSession
+    app.dependency_overrides[get_redis] = _BrokenRedis
 
-    transport = ASGITransport(app=app)
-    async with AsyncClient(transport=transport, base_url="http://testserver") as ac:
-        response = await ac.get("/health")
+    response = await client.get("/health")
 
     assert response.status_code == 503
-    body = response.json()
-    assert body["status"] == "error"
-    assert body["postgres"] == {"status": "error", "error": "db down"}
-    assert body["redis"] == {"status": "error", "error": "redis down"}
+    assert response.json() == {
+        "status": "error",
+        "postgres": {"status": "error", "error": "db down"},
+        "redis": {"status": "error", "error": "redis down"},
+    }

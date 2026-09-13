@@ -2,27 +2,29 @@ from fastapi import APIRouter, HTTPException, Request
 from fastapi.responses import RedirectResponse
 
 from tshortner.api.deps import ShortenerServiceDep
-from tshortner.schemas.url import ShortenRequest, ShortenResponse
+from tshortner.schemas.url import OpenCountResponse, ShortenRequest, ShortenResponse
 
 router = APIRouter()
 
 
-@router.post("/urls", response_model=ShortenResponse, status_code=201)
+@router.post("/urls", status_code=201)
 async def shorten_url(payload: ShortenRequest, request: Request, service: ShortenerServiceDep) -> ShortenResponse:
-    entry = await service.shorten(long_url=str(payload.long_url), user_id=payload.user_id, expires_at=payload.expires_at)
-    base_url = str(request.base_url).rstrip("/")
-    return ShortenResponse(
-        short_code=entry.short_code,
-        short_url=f"{base_url}/{entry.short_code}",
-        long_url=entry.long_url,
-        created_at=entry.created_at,
-        expires_at=entry.expires_at,
-    )
+    entry = await service.shorten(str(payload.original_url), payload.user_id, payload.expires_at)
+    short_url = str(request.url_for("redirect_to_original_url", short_code=entry.short_code))
+    return ShortenResponse(**entry.model_dump(), short_url=short_url)
+
+
+@router.get("/urls/{short_url_id}/stats")
+async def get_open_count(short_url_id: int, service: ShortenerServiceDep) -> OpenCountResponse:
+    open_count = await service.get_open_count(short_url_id)
+    if open_count is None:
+        raise HTTPException(status_code=404, detail="short url not found")
+    return OpenCountResponse(short_url_id=short_url_id, open_count=open_count)
 
 
 @router.get("/{short_code}")
-async def redirect_to_long_url(short_code: str, service: ShortenerServiceDep) -> RedirectResponse:
-    long_url = await service.resolve(short_code)
-    if long_url is None:
+async def redirect_to_original_url(short_code: str, service: ShortenerServiceDep) -> RedirectResponse:
+    original_url = await service.resolve(short_code)
+    if original_url is None:
         raise HTTPException(status_code=404, detail="short URL not found")
-    return RedirectResponse(url=long_url, status_code=302)
+    return RedirectResponse(original_url, status_code=302)

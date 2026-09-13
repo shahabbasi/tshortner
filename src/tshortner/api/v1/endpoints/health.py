@@ -1,8 +1,8 @@
+from collections.abc import Awaitable
+
 from fastapi import APIRouter, Response, status
 from pydantic import BaseModel
-from redis.asyncio import Redis
 from sqlalchemy import text
-from sqlmodel.ext.asyncio.session import AsyncSession
 
 from tshortner.api.deps import RedisDep, SessionDep
 
@@ -20,33 +20,19 @@ class HealthResponse(BaseModel):
     redis: ComponentStatus
 
 
-async def _check_postgres(session: AsyncSession) -> ComponentStatus:
+async def _check(probe: Awaitable[object]) -> ComponentStatus:
     try:
-        await session.exec(text("SELECT 1"))
-        return ComponentStatus(status="ok")
+        await probe
     except Exception as exc:
         return ComponentStatus(status="error", error=str(exc))
+    return ComponentStatus(status="ok")
 
 
-async def _check_redis(redis: Redis) -> ComponentStatus:
-    try:
-        await redis.ping()
-        return ComponentStatus(status="ok")
-    except Exception as exc:
-        return ComponentStatus(status="error", error=str(exc))
-
-
-@router.get("/health", response_model=HealthResponse)
+@router.get("/health")
 async def health_check(response: Response, session: SessionDep, redis: RedisDep) -> HealthResponse:
-    postgres_status = await _check_postgres(session)
-    redis_status = await _check_redis(redis)
-
-    is_healthy = postgres_status.status == "ok" and redis_status.status == "ok"
-    if not is_healthy:
+    postgres_status = await _check(session.exec(text("SELECT 1")))
+    redis_status = await _check(redis.ping())
+    healthy = postgres_status.status == redis_status.status == "ok"
+    if not healthy:
         response.status_code = status.HTTP_503_SERVICE_UNAVAILABLE
-
-    return HealthResponse(
-        status="ok" if is_healthy else "error",
-        postgres=postgres_status,
-        redis=redis_status,
-    )
+    return HealthResponse(status="ok" if healthy else "error", postgres=postgres_status, redis=redis_status)
