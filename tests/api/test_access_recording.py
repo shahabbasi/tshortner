@@ -2,6 +2,7 @@ import json
 from datetime import datetime
 
 from fakeredis import FakeAsyncRedis
+from fastapi import FastAPI
 from httpx import AsyncClient
 
 from tshortner.core.config import get_settings
@@ -34,3 +35,9 @@ async def test_other_requests_do_not_publish(client: AsyncClient, fake_redis: Fa
     await client.post("/urls", json={"original_url": "https://example.com/b", "user_id": "user-1"})
 
     assert await pubsub.get_message(timeout=0.5) is None
+
+
+async def test_injected_parameters_stay_out_of_the_api_schema(app: FastAPI) -> None:
+    parameters = app.openapi()["paths"]["/{short_code}"]["get"]["parameters"]
+
+    assert [parameter["name"] for parameter in parameters] == ["short_code"]

@@ -1,3 +1,4 @@
+import asyncio
 from datetime import datetime, timedelta, timezone
 from unittest.mock import AsyncMock
 
@@ -6,7 +7,7 @@ from fakeredis import FakeAsyncRedis
 
 from tshortner.core.config import get_settings
 from tshortner.repositories.url_repository import URLRepository
-from tshortner.services.shortener import URLShortenerService, cache_key
+from tshortner.services.shortener import ShortenInProgressError, URLShortenerService, cache_key, shorten_lock_key
 
 URL_A = "https://example.com/a"
 URL_B = "https://example.com/b"
@@ -80,17 +81,50 @@ async def test_shorten_returns_row_stored_by_concurrent_request(
     assert (await shortener_service.shorten(URL_A, "user-1")).short_code == "stored1"
 
 
+async def test_duplicate_request_waits_for_the_lock_then_returns_the_first_requests_row(
+    shortener_service: URLShortenerService, url_repository: URLRepository, fake_redis: FakeAsyncRedis
+) -> None:
+    in_flight = fake_redis.lock(shorten_lock_key(URL_A), timeout=10)
+    await in_flight.acquire()
+
+    duplicate = asyncio.create_task(shortener_service.shorten(URL_A, "user-1"))
+    await asyncio.sleep(0.3)
+    assert not duplicate.done()
+
+    await url_repository.create("first01", URL_A, "user-1")  # the in-flight request finishes
+    await in_flight.release()
+
+    assert (await duplicate).short_code == "first01"
+    assert not await fake_redis.exists(shorten_lock_key(URL_A))
+
+
+async def test_duplicate_request_gives_up_when_the_lock_is_held_too_long(
+    shortener_service: URLShortenerService, fake_redis: FakeAsyncRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("tshortner.services.shortener._LOCK_WAIT_SECONDS", 0.2)
+    await fake_redis.lock(shorten_lock_key(URL_A), timeout=10).acquire()
+
+    with pytest.raises(ShortenInProgressError):
+        await shortener_service.shorten(URL_A, "user-1")
+
+
 async def test_resolve_returns_none_for_unknown_code(shortener_service: URLShortenerService) -> None:
     assert await shortener_service.resolve("doesnotexist") is None
 
 
-async def test_resolve_returns_original_url_and_caches_it(
+async def test_resolve_caches_url_for_five_minutes_and_each_hit_resets_the_ttl(
     shortener_service: URLShortenerService, fake_redis: FakeAsyncRedis
 ) -> None:
     code = (await shortener_service.shorten(URL_A, "user-1")).short_code
+    key = cache_key(code)
 
     assert await shortener_service.resolve(code) == URL_A
-    assert await fake_redis.get(cache_key(code)) == URL_A
+    assert await fake_redis.get(key) == URL_A
+    assert 295 <= await fake_redis.ttl(key) <= 300
+
+    await fake_redis.expire(key, 10)
+    assert await shortener_service.resolve(code) == URL_A
+    assert 295 <= await fake_redis.ttl(key) <= 300
 
 
 async def test_get_open_count(shortener_service: URLShortenerService) -> None:

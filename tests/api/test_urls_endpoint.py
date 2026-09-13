@@ -1,4 +1,8 @@
+import pytest
+from fakeredis import FakeAsyncRedis
 from httpx import AsyncClient
+
+from tshortner.services.shortener import shorten_lock_key
 
 
 async def _shorten(client: AsyncClient, original_url: str = "https://example.com/a", user_id: str = "user-1") -> dict:
@@ -33,6 +37,18 @@ async def test_shorten_reuses_code_only_for_same_user(client: AsyncClient) -> No
 
     assert (await _shorten(client))["short_code"] == code
     assert (await _shorten(client, user_id="user-2"))["short_code"] != code
+
+
+async def test_shorten_returns_409_when_the_url_stays_locked(
+    client: AsyncClient, fake_redis: FakeAsyncRedis, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr("tshortner.services.shortener._LOCK_WAIT_SECONDS", 0.2)
+    await fake_redis.lock(shorten_lock_key("https://example.com/a"), timeout=10).acquire()
+
+    response = await client.post("/urls", json={"original_url": "https://example.com/a", "user_id": "user-1"})
+
+    assert response.status_code == 409
+    assert response.headers["retry-after"] == "1"
 
 
 async def test_get_open_count(client: AsyncClient) -> None:

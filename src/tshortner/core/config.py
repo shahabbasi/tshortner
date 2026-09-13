@@ -21,7 +21,7 @@ class Settings(BaseSettings):
     # Give each instance a disjoint set and they can never generate the same code.
     short_code_prefixes: Annotated[list[str], NoDecode] = list(ALPHABET)
 
-    cache_ttl_seconds: int = 3600
+    cache_ttl_seconds: int = 300
     access_events_channel: str = "tshortner:access_events"
     access_log_flush_interval_seconds: float = 60.0
     expiry_check_interval_seconds: float = 3600.0

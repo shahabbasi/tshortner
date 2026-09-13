@@ -60,6 +60,10 @@ default: any). Give each instance a disjoint set — say `a,b,c` and `A,B,C` —
 generate the same code. A new code is checked against both active and expired codes, so an expired
 link never starts pointing somewhere else.
 
+Concurrent requests for the same URL are serialized by a Redis lock shared by all instances. A duplicate
+waits up to 5 seconds, then gets the link the first request created (or its own, for a different user).
+If the lock is still held after that, it gets `409 Conflict` with `Retry-After: 1`.
+
 ## Running tests
 
 Tests run against an in-memory SQLite database and a fake Redis client, so
@@ -82,10 +86,9 @@ uv run pytest
 
 ```
 src/tshortner/
-├── api/          # FastAPI routers, endpoints, and dependencies
+├── api/          # FastAPI routers, endpoints, dependencies, and the access-recording decorator
 ├── core/         # Settings
 ├── db/           # Postgres and Redis clients
-├── middleware/   # Publishes short-link usage to Redis pub/sub
 ├── models/       # SQLModel tables
 ├── repositories/ # Database queries
 ├── schemas/      # Request/response models

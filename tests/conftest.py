@@ -1,4 +1,4 @@
-from collections.abc import AsyncIterator
+from collections.abc import AsyncIterator, Iterator
 
 import pytest
 from fakeredis import FakeAsyncRedis
@@ -11,8 +11,18 @@ from sqlmodel.ext.asyncio.session import AsyncSession
 
 from tshortner.api.deps import get_db_session, get_redis
 from tshortner.app import create_app
+from tshortner.core.config import Settings, get_settings
 from tshortner.repositories.url_repository import URLRepository
 from tshortner.services.shortener import URLShortenerService
+
+
+@pytest.fixture(autouse=True)
+def _settings_from_code_defaults(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Keeps a developer's local .env from changing what the tests see."""
+    monkeypatch.setitem(Settings.model_config, "env_file", None)
+    get_settings.cache_clear()
+    yield
+    get_settings.cache_clear()
 
 
 @pytest.fixture
@@ -43,7 +53,7 @@ def shortener_service(url_repository: URLRepository, fake_redis: FakeAsyncRedis)
 
 @pytest.fixture
 def app(db_session: AsyncSession, fake_redis: FakeAsyncRedis) -> FastAPI:
-    app = create_app(redis=fake_redis)
+    app = create_app()
     app.dependency_overrides[get_db_session] = lambda: db_session
     app.dependency_overrides[get_redis] = lambda: fake_redis
     return app
