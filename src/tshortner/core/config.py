@@ -1,5 +1,5 @@
 from functools import lru_cache
-from typing import Annotated
+from typing import Annotated, Literal
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, NoDecode, SettingsConfigDict
@@ -12,6 +12,8 @@ class Settings(BaseSettings):
 
     app_name: str = "tshortner"
     debug: bool = False
+    log_level: Literal["DEBUG", "INFO", "WARNING", "ERROR"] = "INFO"
+    log_json: bool = False
 
     postgres_dsn: str = "postgresql+asyncpg://tshortner:tshortner@localhost:5432/tshortner"
     redis_dsn: str = "redis://localhost:6379/0"
@@ -24,7 +26,7 @@ class Settings(BaseSettings):
     cache_ttl_seconds: int = 300
     access_events_channel: str = "tshortner:access_events"
     access_log_flush_interval_seconds: float = 60.0
-    expiry_check_interval_seconds: float = 3600.0
+    expiry_check_interval_seconds: float = 300.0
 
     @field_validator("short_code_prefixes", mode="before")
     @classmethod

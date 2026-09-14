@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 
 class ExpiryWorker(BackgroundWorker):
-    """Archives expired short URLs on startup and then every interval (hourly by default)."""
+    """Archives expired short URLs on startup and then every interval (every 5 minutes by default)."""
 
     def __init__(self) -> None:
         super().__init__("expiry-worker", get_settings().expiry_check_interval_seconds)
@@ -27,6 +27,6 @@ class ExpiryWorker(BackgroundWorker):
             if codes:
                 # Otherwise a cached code keeps redirecting until its TTL runs out.
                 await redis.delete(*map(cache_key, codes))
-                logger.info("archived %d expired short url(s)", len(codes))
+                logger.info("archived expired short links", extra={"archived": len(codes)})
             if await self.sleep():
                 return

@@ -1,6 +1,7 @@
 import functools
 import inspect
 import json
+import logging
 from collections.abc import Awaitable, Callable
 from datetime import datetime, timezone
 
@@ -9,6 +10,8 @@ from redis.asyncio import Redis
 
 from tshortner.api.deps import RedisDep
 from tshortner.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 Endpoint = Callable[..., Awaitable[Response]]
 
@@ -32,6 +35,7 @@ def record_short_link_access(endpoint: Endpoint) -> Endpoint:
                 "accessed_at": datetime.now(timezone.utc).isoformat(),
             }
             await _access_redis.publish(get_settings().access_events_channel, json.dumps(event))
+            logger.debug("published access event", extra={"short_code": event["short_code"]})
         return response
 
     wrapper.__signature__ = signature.replace(

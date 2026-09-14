@@ -1,4 +1,5 @@
 import asyncio
+import logging
 import threading
 from contextlib import suppress
 
@@ -7,6 +8,8 @@ from sqlalchemy.ext.asyncio import async_sessionmaker, create_async_engine
 from sqlmodel.ext.asyncio.session import AsyncSession
 
 from tshortner.core.config import get_settings
+
+logger = logging.getLogger(__name__)
 
 
 class BackgroundWorker:
@@ -17,6 +20,7 @@ class BackgroundWorker:
     """
 
     def __init__(self, name: str, interval_seconds: float) -> None:
+        self._name = name
         self._interval_seconds = interval_seconds
         self._loop = asyncio.new_event_loop()
         self._stop = asyncio.Event()
@@ -24,10 +28,17 @@ class BackgroundWorker:
 
     def start(self) -> None:
         self._thread.start()
+        logger.info("started background worker", extra={"worker": self._name, "interval_seconds": self._interval_seconds})
 
     def stop(self) -> None:
+        if not self._thread.is_alive():
+            return  # already finished; a crash was logged when it happened
         self._loop.call_soon_threadsafe(self._stop.set)
         self._thread.join(timeout=10)
+        if self._thread.is_alive():
+            logger.warning("background worker did not stop within 10 s", extra={"worker": self._name})
+        else:
+            logger.info("stopped background worker", extra={"worker": self._name})
 
     async def sleep(self) -> bool:
         """Waits one interval, returning early with True once stop() is called."""
@@ -41,6 +52,8 @@ class BackgroundWorker:
     def _run(self) -> None:
         try:
             self._loop.run_until_complete(self._main())
+        except Exception:
+            logger.exception("background worker crashed", extra={"worker": self._name})
         finally:
             self._loop.close()
 

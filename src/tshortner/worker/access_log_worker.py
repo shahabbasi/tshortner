@@ -21,7 +21,9 @@ logger = logging.getLogger(__name__)
 class AccessLogWorker(BackgroundWorker):
     """Buffers access events from Redis pub/sub and periodically saves them as access logs and click counts.
 
-    Pub/sub doesn't persist messages: events published while no worker is subscribed are lost.
+    Pub/sub delivers every event to every instance; each instance keeps only codes that start with one of
+    its own prefixes, so with disjoint prefixes every click is saved exactly once. Pub/sub doesn't persist
+    messages: events published while no worker is subscribed are lost.
     """
 
     def __init__(self) -> None:
@@ -40,13 +42,20 @@ class AccessLogWorker(BackgroundWorker):
         await self._flush(session_factory)
 
     async def _consume(self, pubsub: PubSub) -> None:
+        prefixes = set(get_settings().short_code_prefixes)
         async for message in pubsub.listen():
             if message["type"] != "message":
                 continue
             try:
-                self._buffer.append(json.loads(message["data"]))
-            except ValueError:
-                logger.warning("dropping malformed access event: %r", message["data"])
+                event = json.loads(message["data"])
+                owned = event["short_code"][:1] in prefixes
+            except (ValueError, KeyError, TypeError):
+                logger.warning("dropped malformed access event", extra={"data": message["data"]})
+                continue
+            if owned:
+                self._buffer.append(event)
+            else:
+                logger.debug("ignored access event for another instance's prefix", extra={"short_code": event["short_code"]})
 
     async def _flush(self, session_factory: async_sessionmaker[AsyncSession]) -> None:
         batch, self._buffer = self._buffer, []
@@ -65,7 +74,8 @@ class AccessLogWorker(BackgroundWorker):
                 if event["short_code"] in ids
             ]
             if dropped := len(batch) - len(logs):
-                logger.warning("dropping %d access event(s) for unknown short codes", dropped)
+                logger.warning("dropped access events for unknown short codes", extra={"dropped": dropped})
             session.add_all(logs)
             await urls.increment_click_counts(Counter(event["short_code"] for event in batch))
             await session.commit()
+        logger.info("saved access events", extra={"saved": len(logs), "short_codes": len(ids)})

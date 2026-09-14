@@ -1,4 +1,5 @@
-# tshortner
+
+# Url Shortner (AI generated README)
 
 A URL shortener built with FastAPI, SQLModel (Postgres), and Redis.
 
@@ -60,9 +61,27 @@ default: any). Give each instance a disjoint set — say `a,b,c` and `A,B,C` —
 generate the same code. A new code is checked against both active and expired codes, so an expired
 link never starts pointing somewhere else.
 
+Prefixes also decide which instance records a link's clicks. Every instance receives every access event,
+but only the instance whose prefixes include the code's first character saves it, so each click is counted
+once. That relies on prefix sets being disjoint, on every prefix in use belonging to a running instance, and
+on running one server process per instance: several processes sharing one prefix set each save every event.
+
 Concurrent requests for the same URL are serialized by a Redis lock shared by all instances. A duplicate
 waits up to 5 seconds, then gets the link the first request created (or its own, for a different user).
 If the lock is still held after that, it gets `409 Conflict` with `Retry-After: 1`.
+
+## Logging
+
+Logs go to stderr. Every request gets an ID, kept from an incoming `X-Request-ID` header when it's a safe
+value and generated otherwise. It's returned in the `X-Request-ID` response header and attached to every log
+line written while handling that request. Each request also gets one summary line with its method, path,
+status, duration and client IP, which replaces uvicorn's own access log. Logs name a link's destination host,
+never the full URL, since query strings can carry tokens.
+
+| Setting | Default | Effect |
+|---|---|---|
+| `LOG_LEVEL` | `INFO` | `DEBUG` adds cache hits and misses, code retries, and published access events |
+| `LOG_JSON` | `false` | `true` writes one JSON object per line, for a log collector |
 
 ## Running tests
 
