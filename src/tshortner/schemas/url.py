@@ -21,4 +21,5 @@ class ShortenResponse(BaseModel):
 
 class OpenCountResponse(BaseModel):
     short_url_id: int
+    short_code: str
     open_count: int

@@ -6,6 +6,7 @@ import pytest
 from fakeredis import FakeAsyncRedis
 
 from tshortner.core.config import get_settings
+from tshortner.models.url import ShortURL
 from tshortner.repositories.url_repository import URLRepository
 from tshortner.services.shortener import ShortenInProgressError, URLShortenerService, cache_key, shorten_lock_key
 
@@ -127,8 +128,18 @@ async def test_resolve_caches_url_for_five_minutes_and_each_hit_resets_the_ttl(
     assert 295 <= await fake_redis.ttl(key) <= 300
 
 
-async def test_get_open_count(shortener_service: URLShortenerService) -> None:
+async def test_get_stats_returns_the_active_code_and_open_count(shortener_service: URLShortenerService) -> None:
     entry = await shortener_service.shorten(URL_A, "user-1")
 
-    assert await shortener_service.get_open_count(entry.id) == 0
-    assert await shortener_service.get_open_count(999999) is None
+    assert await shortener_service.get_stats(entry.id) == (entry.short_code, 0)
+    assert await shortener_service.get_stats(999999) is None
+
+
+async def test_get_stats_returns_the_expired_code_once_a_link_is_archived(
+    shortener_service: URLShortenerService, url_repository: URLRepository
+) -> None:
+    archived = ShortURL(short_code=None, expired_short_code="gone123", original_url=URL_A, user_id="user-1", click_count=4)
+    url_repository._session.add(archived)
+    await url_repository._session.commit()
+
+    assert await shortener_service.get_stats(archived.id) == ("gone123", 4)

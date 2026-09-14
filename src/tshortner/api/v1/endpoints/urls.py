@@ -25,10 +25,11 @@ async def shorten_url(payload: ShortenRequest, request: Request, service: Shorte
 
 @router.get("/urls/{short_url_id}/stats")
 async def get_open_count(short_url_id: int, service: ShortenerServiceDep) -> OpenCountResponse:
-    open_count = await service.get_open_count(short_url_id)
-    if open_count is None:
+    stats = await service.get_stats(short_url_id)
+    if stats is None:
         raise HTTPException(status_code=404, detail="short url not found")
-    return OpenCountResponse(short_url_id=short_url_id, open_count=open_count)
+    short_code, open_count = stats
+    return OpenCountResponse(short_url_id=short_url_id, short_code=short_code, open_count=open_count)
 
 
 @router.get("/{short_code}")

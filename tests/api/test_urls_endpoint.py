@@ -51,11 +51,11 @@ async def test_shorten_returns_409_when_the_url_stays_locked(
     assert response.headers["retry-after"] == "1"
 
 
-async def test_get_open_count(client: AsyncClient) -> None:
-    short_url_id = (await _shorten(client))["id"]
+async def test_get_stats(client: AsyncClient) -> None:
+    created = await _shorten(client)
 
-    response = await client.get(f"/urls/{short_url_id}/stats")
+    response = await client.get(f"/urls/{created['id']}/stats")
 
     assert response.status_code == 200
-    assert response.json() == {"short_url_id": short_url_id, "open_count": 0}
+    assert response.json() == {"short_url_id": created["id"], "short_code": created["short_code"], "open_count": 0}
     assert (await client.get("/urls/999999/stats")).status_code == 404

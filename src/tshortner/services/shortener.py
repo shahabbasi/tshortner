@@ -100,6 +100,9 @@ class URLShortenerService:
         logger.debug("cache miss, cached the original URL", extra={"short_code": short_code})
         return entry.original_url
 
-    async def get_open_count(self, short_url_id: int) -> int | None:
+    async def get_stats(self, short_url_id: int) -> tuple[str, int] | None:
+        """Returns the link's short code and open count; once expired, the code it had is in expired_short_code."""
         entry = await self._repository.get_by_id(short_url_id)
-        return None if entry is None else entry.click_count
+        if entry is None:
+            return None
+        return entry.short_code or entry.expired_short_code, entry.click_count
